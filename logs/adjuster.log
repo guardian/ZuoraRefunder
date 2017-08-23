@@ -1,0 +1,12 @@
+2017-08-23 15:47:00,402 Adjuster$[Adjuster.scala:52] INFO: Attempting to adjust: A-S00070401
+2017-08-23 15:47:00,606 Adjuster$[Adjuster.scala:64] INFO: Subscription: A-S00070401 	Ongoing Discount Start Date: 2018-09-05 	Ongoing Discount Amount: -3.12 	Mini Payment Amount: -1.46 	Mini Payment From 2018-08-05 until 2018-09-05
+2017-08-23 15:47:04,404 Adjuster$[Adjuster.scala:127] INFO: Successfully added discounts to sub: A-S00070401
+2017-08-23 15:51:23,603 Adjuster$[Adjuster.scala:53] INFO: Attempting to adjust: A-S00070401
+2017-08-23 15:51:23,636 Adjuster$[Adjuster.scala:65] INFO: Subscription: A-S00070401 	Ongoing Discount Start Date: 2018-09-05 	Ongoing Discount Amount: -3.12 	Mini Payment Amount: -1.46 	Mini Payment From 2018-08-05 until 2018-09-05
+2017-08-23 15:51:26,326 Adjuster$[Adjuster.scala:144] ERROR: A-S00070401 FAILED to adjust sub due to Failed to convert Zuora response to case class - we got: {"success":true,"subscriptionId":"2c92c0fa5e0d9bce015e0f939ba213dc","totalDeltaMrr":-3.12,"totalDeltaTcv":-37.490967743}
+2017-08-23 15:52:21,598 Adjuster$[Adjuster.scala:53] INFO: Attempting to adjust: A-S00070401
+2017-08-23 15:52:21,627 Adjuster$[Adjuster.scala:65] INFO: Subscription: A-S00070401 	Ongoing Discount Start Date: 2018-09-05 	Ongoing Discount Amount: -3.12 	Mini Payment Amount: -1.46 	Mini Payment From 2018-08-05 until 2018-09-05
+2017-08-23 15:52:22,418 Adjuster$[Adjuster.scala:144] ERROR: A-S00070401 FAILED to adjust sub due to Response from Zuora was not successful, we got a 401
+2017-08-23 15:56:47,718 Adjuster$[Adjuster.scala:53] INFO: Attempting to adjust: A-S00070401
+2017-08-23 15:56:47,753 Adjuster$[Adjuster.scala:65] INFO: Subscription: A-S00070401 	Ongoing Discount Start Date: 2018-09-05 	Ongoing Discount Amount: -3.12 	Mini Payment Amount: -1.46 	Mini Payment From 2018-08-05 until 2018-09-05
+2017-08-23 15:56:50,269 Adjuster$[Adjuster.scala:127] INFO: Successfully added discounts to sub: A-S00070401
