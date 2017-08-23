@@ -3,6 +3,7 @@ import com.github.nscala_time.time.Imports._
 import com.typesafe.scalalogging.LazyLogging
 import play.api.libs.functional.syntax._
 import play.api.libs.json._
+import scala.util.{Failure, Success}
 
 object Adjuster extends App with LazyLogging {
 
@@ -32,11 +33,6 @@ object Adjuster extends App with LazyLogging {
                          productRatePlanChargeId: String
                        )
 
-  val UATADJUSTMENT = Adjustment(
-    productRatePlanId = "2c92c0f85e0d9c02015e0e527a5e7120",
-    productRatePlanChargeId = "2c92c0f95e0da917015e0e54be576690"
-  )
-
   val client = new OkHttpClient()
 
   val mediaType = MediaType.parse("application/json")
@@ -49,18 +45,18 @@ object Adjuster extends App with LazyLogging {
 
   def formatDiscount(m: BigDecimal): String = s"-${formatCurrency(m)}"
 
-  def adjustSub(adjustment: Adjustment)(sub: Sub) = {
+  def adjustSub(adjustment: Adjustment)(sub: Sub): Unit = {
+
     logger.info(s"Attempting to adjust: ${sub.subName}")
     val ongoingAdjustmentStartDate = formatDate(sub.nextInvoiceDate)
-
     val miniPaymentAdjustmentStartDate = formatDate(sub.nextInvoiceDate.minusMonths(1))
     val miniPaymentAdjustmentEndDate = formatDate(sub.nextInvoiceDate) //Exclusive end date not inclusive
 
     val ongoingAdjustmentAmount = sub.newAmount - sub.oldAmount
     val formattedOngoingAdjustmentAmount = formatDiscount(ongoingAdjustmentAmount)
-
     val miniPaymentAmount = sub.miniPaymentAmount
     val formattedMiniPaymentAmount = formatDiscount(miniPaymentAmount)
+
     logger.info(
       s"Subscription: ${sub.subName} \tOngoing Discount Start Date: ${ongoingAdjustmentStartDate} \tOngoing Discount Amount: ${formattedOngoingAdjustmentAmount} \tMini Payment Amount: ${formattedMiniPaymentAmount} \tMini Payment From ${miniPaymentAdjustmentStartDate} until $miniPaymentAdjustmentEndDate")
 
@@ -146,14 +142,24 @@ object Adjuster extends App with LazyLogging {
 
   }
 
-  adjustSub(UATADJUSTMENT)(
-    Sub(
-      subName = "A-S00070401",
-      miniPaymentAmount = 1.46,
-      oldAmount = 44.50,
-      newAmount = 47.62,
-      nextInvoiceDate = new DateTime(2018, 9, 5, 0, 0, 0, 0)
-    )
+  val uatAdjustment = Adjustment(
+    productRatePlanId = "2c92c0f85e0d9c02015e0e527a5e7120",
+    productRatePlanChargeId = "2c92c0f95e0da917015e0e54be576690"
   )
+
+  logger.info("Starting Adjuster script... attempting to read CSV")
+
+  val tryToRead = Reader.read("test.csv")
+
+  tryToRead match {
+    case Success(subs) => {
+      logger.info(s"Successfully read file: $subs")
+      logger.info("Starting to process adjustments")
+      subs.foreach(adjustSub(uatAdjustment))
+    }
+    case Failure(ex) => {
+      logger.error(s"Couldn't read file due to: $ex")
+    }
+  }
 
 }
