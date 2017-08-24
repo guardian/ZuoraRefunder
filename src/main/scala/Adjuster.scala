@@ -53,10 +53,12 @@ object Adjuster extends App with LazyLogging {
   val mediaType = MediaType.parse("application/json")
 
   def logFailure(subName: String, error: String) = {
-    logger.error(s"${subName} FAILED to adjust sub. $error")
+    logger.error(s"${subName}: FAILED to adjust sub. $error")
   }
 
   def prepareAdjustmentData(sub: Sub): AdjustmentData = {
+
+    logger.info(s"${sub.subName}: Preparing adjustment data...")
 
     def dateFormatter = DateTimeFormat.forPattern("yyyy-MM-dd")
 
@@ -66,21 +68,21 @@ object Adjuster extends App with LazyLogging {
 
     def formatDiscount(m: BigDecimal): String = s"-${formatCurrency(m)}"
 
-    logger.info(s"Preparing adjustment data for: ${sub.subName}")
-
     val monthlyOverpayment = sub.newAmount - sub.oldAmount
-    val ongoingAdjustmentStartDate = formatDate(sub.nextInvoiceDate)
 
-    val ongoingAdjustment = if (monthlyOverpayment >= 0.01) Some(OngoingAdjustmentData(ongoingAdjustmentStartDate, formatDiscount(monthlyOverpayment))) else None
+    val ongoingAdjustment = if (monthlyOverpayment >= 0.01) {
+      val ongoingAdjustmentStartDate = formatDate(sub.nextInvoiceDate)
+      Some(OngoingAdjustmentData(ongoingAdjustmentStartDate, formatDiscount(monthlyOverpayment)))
+    } else {
+      None
+    }
 
     val miniOverpaymentAdjustment = sub.miniOverpaymentAmount.map { amount =>
-
       val formattedMiniPaymentAmount = formatDiscount(amount)
       val miniPaymentAdjustmentStartDate = formatDate(sub.nextInvoiceDate.minusMonths(1))
       val miniPaymentAdjustmentEndDate = formatDate(sub.nextInvoiceDate) //Exclusive end date not inclusive
       MiniAdjustmentData(miniPaymentAdjustmentStartDate, miniPaymentAdjustmentEndDate, formattedMiniPaymentAmount)
     }
-
 
     val adjustmentData = AdjustmentData(
       sub.subName,
@@ -88,7 +90,7 @@ object Adjuster extends App with LazyLogging {
       miniOverpaymentAdjustment
     )
 
-    logger.info(s"${sub.subName} adjustment data is: $adjustmentData}")
+    logger.info(s"${sub.subName}: adjustment data is: $adjustmentData}")
     adjustmentData
 
   }
@@ -194,7 +196,10 @@ object Adjuster extends App with LazyLogging {
          |	      ${adjustments.mkString(",")}
          |	]
          |}""".stripMargin
+
+    logger.info(s"${adjustmentData.subName}: JSON will be: $json")
     json
+
   }
 
   val uatIds = ZuoraCatalogIds(productRatePlanId = "2c92c0f85e0d9c02015e0e527a5e7120", productRatePlanChargeId = "2c92c0f95e0da917015e0e54be576690")
@@ -209,7 +214,7 @@ object Adjuster extends App with LazyLogging {
       logger.info("Starting to process data for adjustments")
       val adjustments = subs.map(sub => prepareAdjustmentData(sub))
       logger.info("Finished preparing adjustment data; starting processing...")
-      adjustments.map(adjustment => println(generateJson(uatIds, adjustment)))
+      adjustments.map(adjustment => generateJson(uatIds, adjustment))
       // call zuora
     }
     case Failure(ex) => {

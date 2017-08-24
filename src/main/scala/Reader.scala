@@ -26,7 +26,7 @@ object Reader extends LazyLogging {
     Try { //If we can't parse one row, we can't parse the file.
       val rows = CSVReader[Input].readCSVFromFileName(filename, skipHeader = true)
       rows.map { row =>
-        logger.info(s"Reading subscription ${row.subName}")
+        logger.info(s"${row.subName}: Reading subscription...")
         Sub(
           subName = row.subName,
           miniOverpaymentAmount = Try(convertToCurrency(row.miniPaymentAmount)) match {
