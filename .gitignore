@@ -18,3 +18,5 @@ src_managed/
 project/boot/
 .history
 .cache
+*.csv
+!test.csv
