@@ -112,6 +112,7 @@ object Adjuster extends App with LazyLogging {
       .addHeader("content-type", "application/json")
       .build()
 
+    logger.info(s"s${adjustmentData.subName}: attempting to adjust sub in Zuora")
     val response = client.newCall(request).execute()
 
     if (response.isSuccessful) {
