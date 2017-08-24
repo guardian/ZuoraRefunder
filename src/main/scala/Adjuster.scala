@@ -104,7 +104,7 @@ object Adjuster extends App with LazyLogging {
     val body = RequestBody.create(mediaType, json)
 
     val request = new Request.Builder()
-      .url(s"https://rest.apisandbox.zuora.com/v1/subscriptions/${subName}")
+      .url(s"https://rest.zuora.com/v1/subscriptions/${subName}")
       .put(body)
       .addHeader("apiaccesskeyid", username)
       .addHeader("apisecretaccesskey", password)
@@ -208,7 +208,7 @@ object Adjuster extends App with LazyLogging {
 
   logger.info("Starting Adjuster script... attempting to read CSV")
 
-  val tryToRead = Reader.read("test.csv")
+  val tryToRead = Reader.read("refund-batch-1.csv")
 
   tryToRead match {
     case Success(subs) => {
@@ -216,8 +216,7 @@ object Adjuster extends App with LazyLogging {
       logger.info("Starting to process data for adjustments")
       val adjustments = subs.map(sub => prepareAdjustmentData(sub))
       logger.info("Finished preparing adjustment data; starting processing...")
-      adjustments.map(adjustment => generateJson(prodIds, adjustment))
-      // call zuora
+      adjustments.foreach(adjustment => adjustSubInZuora(prodIds, adjustment))
     }
     case Failure(ex) => {
       logger.error(s"Couldn't read file due to: $ex")
