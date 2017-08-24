@@ -122,7 +122,7 @@ object Adjuster extends App with LazyLogging {
         case success: JsSuccess[UpdateSubscriptionResponse] => {
           val updateSubResponse = success.get
           if (updateSubResponse.success) {
-            logger.info(s"Successfully added discounts to sub: ${subName}")
+            logger.info(s"${subName}: Successfully added discounts to sub")
           } else {
             val error = s"Parsed Zuora response successfully, but success = false. Full body was: ${bodyAsJson}"
             logFailure(subName, error)
