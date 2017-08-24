@@ -12,7 +12,7 @@ object Adjuster extends App with LazyLogging {
 
   case class Sub(
                   subName: String,
-                  miniPaymentAmount: BigDecimal,
+                  miniOverpaymentAmount: Option[BigDecimal],
                   oldAmount: BigDecimal,
                   newAmount: BigDecimal,
                   nextInvoiceDate: DateTime
@@ -20,26 +20,32 @@ object Adjuster extends App with LazyLogging {
 
   implicit val updateSubscriptionReads: Reads[UpdateSubscriptionResponse] = (
     (JsPath \ "success").read[Boolean] and
-    (JsPath \ "subscriptionId").read[String]
-  )(UpdateSubscriptionResponse.apply _)
+      (JsPath \ "subscriptionId").read[String]
+    ) (UpdateSubscriptionResponse.apply _)
 
   case class UpdateSubscriptionResponse(
-                          success: Boolean,
-                          subscriptionId: String
-                          )
+                                         success: Boolean,
+                                         subscriptionId: String
+                                       )
 
   case class ZuoraCatalogIds(
-                         productRatePlanId: String,
-                         productRatePlanChargeId: String
-                       )
+                              productRatePlanId: String,
+                              productRatePlanChargeId: String
+                            )
+
+  case class OngoingAdjustmentData(
+                                    ongoingAdjStart: String,
+                                    ongoingAdjAmount: String)
+
+  case class MiniAdjustmentData(
+                                 miniAdjStart: String,
+                                 miniAdjEnd: String,
+                                 miniAdjAmount: String)
 
   case class AdjustmentData(
-                            subName: String,
-                            ongoingAdjStart: String,
-                            ongoingAdjAmount: String,
-                            miniAdjStart: String,
-                            miniAdjEnd: String,
-                            miniAdjAmount: String
+                             subName: String,
+                             maybeOngoingAdjustment: Option[OngoingAdjustmentData],
+                             maybeMiniAdjustment: Option[MiniAdjustmentData]
                            )
 
   val client = new OkHttpClient()
@@ -62,23 +68,24 @@ object Adjuster extends App with LazyLogging {
 
     logger.info(s"Preparing adjustment data for: ${sub.subName}")
 
-    val ongoingAdjustmentAmount = sub.newAmount - sub.oldAmount
-    val miniPaymentAmount = sub.miniPaymentAmount
-
-    val formattedOngoingAdjustmentAmount = formatDiscount(ongoingAdjustmentAmount)
-    val formattedMiniPaymentAmount = formatDiscount(miniPaymentAmount)
-
+    val monthlyOverpayment = sub.newAmount - sub.oldAmount
     val ongoingAdjustmentStartDate = formatDate(sub.nextInvoiceDate)
-    val miniPaymentAdjustmentStartDate = formatDate(sub.nextInvoiceDate.minusMonths(1))
-    val miniPaymentAdjustmentEndDate = formatDate(sub.nextInvoiceDate) //Exclusive end date not inclusive
+
+    val ongoingAdjustment = if (monthlyOverpayment >= 0.01) Some(OngoingAdjustmentData(ongoingAdjustmentStartDate, formatDiscount(monthlyOverpayment))) else None
+
+    val miniOverpaymentAdjustment = sub.miniOverpaymentAmount.map { amount =>
+
+      val formattedMiniPaymentAmount = formatDiscount(amount)
+      val miniPaymentAdjustmentStartDate = formatDate(sub.nextInvoiceDate.minusMonths(1))
+      val miniPaymentAdjustmentEndDate = formatDate(sub.nextInvoiceDate) //Exclusive end date not inclusive
+      MiniAdjustmentData(miniPaymentAdjustmentStartDate, miniPaymentAdjustmentEndDate, formattedMiniPaymentAmount)
+    }
+
 
     val adjustmentData = AdjustmentData(
-      subName = sub.subName,
-      ongoingAdjStart = ongoingAdjustmentStartDate,
-      ongoingAdjAmount = formattedOngoingAdjustmentAmount,
-      miniAdjStart = miniPaymentAdjustmentStartDate,
-      miniAdjEnd = miniPaymentAdjustmentEndDate,
-      miniAdjAmount = formattedMiniPaymentAmount
+      sub.subName,
+      ongoingAdjustment,
+      miniOverpaymentAdjustment
     )
 
     logger.info(s"${sub.subName} adjustment data is: $adjustmentData}")
@@ -132,95 +139,62 @@ object Adjuster extends App with LazyLogging {
 
   def generateJson(catalogIds: ZuoraCatalogIds, adjustmentData: AdjustmentData): String = {
 
-    val miniPaymentDiscountJson =
+    val miniPaymentDiscountJson = adjustmentData.maybeMiniAdjustment.map{miniAdjustmentData =>
       s"""
          |{
-         |	"contractEffectiveDate": "${adjustmentData.miniAdjStart}",
-         |	"customerAcceptanceDate": "${adjustmentData.miniAdjStart}",
-         |	"serviceActivationDate": "${adjustmentData.miniAdjStart}",
+         |	"contractEffectiveDate": "${miniAdjustmentData.miniAdjStart}",
+         |	"customerAcceptanceDate": "${miniAdjustmentData.miniAdjStart}",
+         |	"serviceActivationDate": "${miniAdjustmentData.miniAdjStart}",
          |	"productRatePlanId": "${catalogIds.productRatePlanId}",
          |	"chargeOverrides": [
          |		{
          |			"billCycleType": "DefaultFromCustomer",
          |			"billingPeriod": "Month",
          |			"endDateCondition": "Specific_End_Date",
-         |			"specificEndDate": "${adjustmentData.miniAdjEnd}",
-         |			"price": ${adjustmentData.miniAdjAmount},
+         |			"specificEndDate": "${miniAdjustmentData.miniAdjEnd}",
+         |			"price": ${miniAdjustmentData.miniAdjAmount},
          |			"priceChangeOption": "NoChange",
          |			"productRatePlanChargeId": "${catalogIds.productRatePlanChargeId}"
          |		}
          |	]
-         |}
-       """.stripMargin
+         |}""".stripMargin
+    }
 
-    val ongoingPaymentDiscountJson =
+
+
+    val ongoingPaymentDiscountJson = adjustmentData.maybeOngoingAdjustment.map { ongoingAdjustmentData =>
+
+          s"""
+             |{
+             |	"contractEffectiveDate": "${ongoingAdjustmentData.ongoingAdjStart}",
+             |	"customerAcceptanceDate": "${ongoingAdjustmentData.ongoingAdjStart}",
+             |	"serviceActivationDate": "${ongoingAdjustmentData.ongoingAdjStart}",
+             |	"productRatePlanId": "${catalogIds.productRatePlanId}",
+             |	"chargeOverrides": [
+             |		{
+             |			"billCycleType": "DefaultFromCustomer",
+             |			"billingPeriod": "Month",
+             |			"endDateCondition": "Subscription_End",
+             |			"price": ${ongoingAdjustmentData.ongoingAdjAmount},
+             |			"priceChangeOption": "NoChange",
+             |			"productRatePlanChargeId": "${catalogIds.productRatePlanChargeId}"
+             |		}
+             |	]
+             |}""".stripMargin
+
+
+    }
+
+    val adjustments = Seq(miniPaymentDiscountJson, ongoingPaymentDiscountJson).flatten
+
+    val json =
       s"""
          |{
-         |	"contractEffectiveDate": "${adjustmentData.ongoingAdjStart}",
-         |	"customerAcceptanceDate": "${adjustmentData.ongoingAdjStart}",
-         |	"serviceActivationDate": "${adjustmentData.ongoingAdjStart}",
-         |	"productRatePlanId": "${catalogIds.productRatePlanId}",
-         |	"chargeOverrides": [
-         |		{
-         |			"billCycleType": "DefaultFromCustomer",
-         |			"billingPeriod": "Month",
-         |			"endDateCondition": "Subscription_End",
-         |			"price": ${adjustmentData.ongoingAdjAmount},
-         |			"priceChangeOption": "NoChange",
-         |			"productRatePlanChargeId": "${catalogIds.productRatePlanChargeId}"
-         |		}
+         |	"add": [
+         |	      ${adjustments.mkString(",")}
          |	]
-         |}
-       """.stripMargin
-
-    val json = s"""
-                  |{
-                  |	"add": [
-                  |		{
-                  |			"contractEffectiveDate": "${adjustmentData.miniAdjStart}",
-                  |			"customerAcceptanceDate": "${adjustmentData.miniAdjStart}",
-                  |			"serviceActivationDate": "${adjustmentData.miniAdjStart}",
-                  |			"productRatePlanId": "${catalogIds.productRatePlanId}",
-                  |			"chargeOverrides": [
-                  |				{
-                  |					"billCycleType": "DefaultFromCustomer",
-                  |					"billingPeriod": "Month",
-                  |					"endDateCondition": "Specific_End_Date",
-                  |					"specificEndDate": "${adjustmentData.miniAdjEnd}",
-                  |					"price": ${adjustmentData.miniAdjAmount},
-                  |					"priceChangeOption": "NoChange",
-                  |					"productRatePlanChargeId": "${catalogIds.productRatePlanChargeId}"
-                  |				}
-                  |			]
-                  |		},
-                  |		{
-                  |			"contractEffectiveDate": "${adjustmentData.ongoingAdjStart}",
-                  |			"customerAcceptanceDate": "${adjustmentData.ongoingAdjStart}",
-                  |			"serviceActivationDate": "${adjustmentData.ongoingAdjStart}",
-                  |			"productRatePlanId": "${catalogIds.productRatePlanId}",
-                  |			"chargeOverrides": [
-                  |				{
-                  |					"billCycleType": "DefaultFromCustomer",
-                  |					"billingPeriod": "Month",
-                  |					"endDateCondition": "Subscription_End",
-                  |					"price": ${adjustmentData.ongoingAdjAmount},
-                  |					"priceChangeOption": "NoChange",
-                  |					"productRatePlanChargeId": "${catalogIds.productRatePlanChargeId}"
-                  |				}
-                  |			]
-                  |		}
-                  |	]
-                  |}""".stripMargin
+         |}""".stripMargin
     json
-  }
-
-  def handleAdjustmentData(catalogIds: ZuoraCatalogIds, adjustmentData: AdjustmentData): Unit = {
-    if (adjustmentData.miniAdjAmount.toInt <= 0 || adjustmentData.ongoingAdjAmount.toInt <= 0) {
-      val error = s"Found an adjustment amount which was not negative! Adjustment Data: $adjustmentData"
-      logFailure(adjustmentData.subName, error)
-    } else {
-      adjustSubInZuora(catalogIds, adjustmentData)
-    }
   }
 
   val uatIds = ZuoraCatalogIds(productRatePlanId = "2c92c0f85e0d9c02015e0e527a5e7120", productRatePlanChargeId = "2c92c0f95e0da917015e0e54be576690")
@@ -235,7 +209,8 @@ object Adjuster extends App with LazyLogging {
       logger.info("Starting to process data for adjustments")
       val adjustments = subs.map(sub => prepareAdjustmentData(sub))
       logger.info("Finished preparing adjustment data; starting processing...")
-      adjustments.foreach(adjustment => handleAdjustmentData(uatIds, adjustment))
+      adjustments.map(adjustment => println(generateJson(uatIds, adjustment)))
+      // call zuora
     }
     case Failure(ex) => {
       logger.error(s"Couldn't read file due to: $ex")
