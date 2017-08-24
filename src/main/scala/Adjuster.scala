@@ -203,6 +203,7 @@ object Adjuster extends App with LazyLogging {
 
   }
 
+  val prodIds = ZuoraCatalogIds(productRatePlanId = "2c92a0ff5e09bd67015e0a93efe86d2e",productRatePlanChargeId = "2c92a0ff5e09bd67015e0a93f0026d34")
   val uatIds = ZuoraCatalogIds(productRatePlanId = "2c92c0f85e0d9c02015e0e527a5e7120", productRatePlanChargeId = "2c92c0f95e0da917015e0e54be576690")
 
   logger.info("Starting Adjuster script... attempting to read CSV")
@@ -215,7 +216,7 @@ object Adjuster extends App with LazyLogging {
       logger.info("Starting to process data for adjustments")
       val adjustments = subs.map(sub => prepareAdjustmentData(sub))
       logger.info("Finished preparing adjustment data; starting processing...")
-      adjustments.map(adjustment => generateJson(uatIds, adjustment))
+      adjustments.map(adjustment => generateJson(prodIds, adjustment))
       // call zuora
     }
     case Failure(ex) => {
