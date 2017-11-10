@@ -1,44 +1,32 @@
-import Adjuster.Sub
-import com.typesafe.scalalogging.LazyLogging
-import org.joda.time.DateTime
-import org.joda.time.format.DateTimeFormat
+import Refunder.{AccountForRefund, OutputCsvLine}
+import com.typesafe.scalalogging.StrictLogging
 import purecsv.unsafe._
 
-import scala.util.{Failure, Success, Try}
+object Reader extends StrictLogging {
 
-object Reader extends LazyLogging {
+  case class RefunderInput(accountId: String, overPaymentAmount: String)
 
-  case class Input(
-                    subName: String,
-                    miniPaymentAmount: String,
-                    oldAmount: String,
-                    newAmount: String,
-                    nextInvoiceDate: String
-                  )
+  def convertToDouble(s: String): Double = s.replaceAll("£", "").toDouble
 
-  val dateTimeFormatter = DateTimeFormat.forPattern("dd/MM/yyyy")
-
-  def convertToCurrency(s: String): BigDecimal = BigDecimal(s.replaceAll("£", ""))
-
-  def convertToDate(s: String): DateTime = dateTimeFormatter.parseDateTime(s)
-
-  def read(filename: String): Try[List[Sub]] = {
-    Try { //If we can't parse one row, we can't parse the file.
-      val rows = CSVReader[Input].readCSVFromFileName(filename, skipHeader = true)
-      rows.map { row =>
-        logger.info(s"${row.subName}: Reading subscription...")
-        Sub(
-          subName = row.subName,
-          miniOverpaymentAmount = Try(convertToCurrency(row.miniPaymentAmount)) match {
-            case Success(x) => Some(x)
-            case Failure(_) => None
-          },
-          oldAmount = convertToCurrency(row.oldAmount),
-          newAmount = convertToCurrency(row.newAmount),
-          nextInvoiceDate = convertToDate(row.nextInvoiceDate)
-        )
-      }
+  def readForRefunder(filename: String): List[AccountForRefund] = {
+    val rows = CSVReader[RefunderInput].readCSVFromFileName(filename, skipHeader = true)
+    val accountsForRefund = rows.map { row =>
+      AccountForRefund(
+        accountId = row.accountId,
+        totalOverpaymentAmount = convertToDouble(row.overPaymentAmount)
+      )
     }
+    logger.info(s"Read ${accountsForRefund.size} accounts...")
+    accountsForRefund
+  }
+
+}
+
+object Writer extends StrictLogging {
+
+  def createOutputCsv(outputFileName: String, outputLines: List[OutputCsvLine]) = {
+    logger.info(s"Writing ${outputLines.size} output lines to file")
+    outputLines.writeCSVToFileName(fileName = outputFileName, header = Some(List("accountId", "negativeInvoiceNumber", "negativeInvoiceAmount", "invoiceNumberToCredit")))
   }
 
 }
