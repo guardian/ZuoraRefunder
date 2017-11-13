@@ -30,22 +30,37 @@ object ZuoraRefundService extends Logging {
 
   case class BasicAccountInfo(id: String, balance: Double)
 
+  case class Subscription(subscriptionNumber: String, status: String) {
+    def isActive: Boolean = status == "Active"
+  }
+
   case class Invoice(id: String, invoiceNumber: String, amount: Double, balance: Double, status: String)
 
   case class PaidInvoice(invoiceId: String, invoiceNumber: String, appliedPaymentAmount: Double)
 
-  case class Payment(id: String, status: String, effectiveDate: LocalDate, paidInvoices: List[PaidInvoice])
+  case class Payment(id: String, status: String, effectiveDate: LocalDate, paidInvoices: List[PaidInvoice]) {
+    def totalAmountPaid: Double = paidInvoices.map(invoice => invoice.appliedPaymentAmount).sum
+  }
 
-  case class AccountSummary(basicInfo: BasicAccountInfo, invoices: List[Invoice], payments: List[Payment])
+  case class AccountSummary(basicInfo: BasicAccountInfo, subscriptions: List[Subscription], invoices: List[Invoice], payments: List[Payment])
 
   case class RefundResult(success: Boolean, id: String)
 
   case class ProcessRefund(accountId: String, paymentId: String, refundAmount: Double)
 
+  case class AccountUpdate(autoPay: Boolean)
+
+  case class UpdateAccountResult(success: Boolean)
+
   implicit val basicAccountInfoReads: Reads[BasicAccountInfo] = (
     (JsPath \ "id").read[String] and
     (JsPath \ "balance").read[Double]
   )(BasicAccountInfo.apply _)
+
+  implicit val subscriptionReads: Reads[Subscription] = (
+    (JsPath \ "subscriptionNumber").read[String] and
+    (JsPath \ "status").read[String]
+  )(Subscription.apply _)
 
   implicit val invoiceReads: Reads[Invoice] = (
     (JsPath \ "id").read[String] and
@@ -70,6 +85,7 @@ object ZuoraRefundService extends Logging {
 
   implicit val accountSummaryReads: Reads[AccountSummary] = (
     (JsPath \ "basicInfo").read[BasicAccountInfo] and
+    (JsPath \ "subscriptions").read[List[Subscription]] and
     (JsPath \ "invoices").read[List[Invoice]] and
     (JsPath \ "payments").read[List[Payment]]
   )(AccountSummary.apply _)
@@ -87,6 +103,16 @@ object ZuoraRefundService extends Logging {
       "ReasonCode" -> "Customer Satisfaction",
       "SourceType" -> "Payment",
       "Type" -> "Electronic"
+    )
+  }
+
+  implicit val updateAccountResultReads: Reads[UpdateAccountResult] = (JsPath \ "success").read[Boolean].map {
+    success => UpdateAccountResult(success)
+  }
+
+  implicit val accountUpdateWrites = new Writes[AccountUpdate] {
+    def writes(accountUpdate: AccountUpdate) = Json.obj(
+      "autoPay" -> accountUpdate.autoPay
     )
   }
 
@@ -112,6 +138,16 @@ object ZuoraRefundService extends Logging {
     val call = restClient.newCall(request)
     val response = call.execute
     convertResponseToCaseClass[AccountSummary](accountId, response)
+  }
+
+  def disableAutoPay(accountId: String): String \/ UpdateAccountResult = {
+    val accountUpdate = AccountUpdate(autoPay = false)
+    val body = RequestBody.create(MediaType.parse("application/json"), Json.toJson(accountUpdate).toString)
+    val request = buildRequest(config, s"accounts/${accountId}").put(body).build()
+    val call = restClient.newCall(request)
+    logger.info(s"Attempting to disable autoPay with the following command: $accountUpdate")
+    val response = call.execute
+    convertResponseToCaseClass[UpdateAccountResult](accountId, response)
   }
 
   def processRefund(accountId: String, paymentId: String, refundAmount: Double): String \/ RefundResult = {

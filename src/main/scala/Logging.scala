@@ -10,8 +10,8 @@ trait Logging extends StrictLogging {
     logger.error(s"AccountId $accountId: $message")
   }
 
-  def logSuccessfulResult(accountId: String, refundId: String): Unit = {
-    logInfo(accountId, s"SUCCESSFUL refund processing. RefundId: $refundId")
+  def logSuccessfulResult(accountId: String, refundIds: List[String]): Unit = {
+    logInfo(accountId, s"SUCCESSFUL refund processing. RefundIds: $refundIds")
   }
 
   def logFailureResult(accountId: String, errorMessage: String): Unit = {

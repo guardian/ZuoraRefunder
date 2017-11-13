@@ -4,16 +4,14 @@ import purecsv.unsafe._
 
 object Reader extends StrictLogging {
 
-  case class RefunderInput(accountId: String, overPaymentAmount: String)
-
-  def convertToDouble(s: String): Double = s.replaceAll("£", "").toDouble
+  case class RefunderInput(accountId: String, overPaymentAmount: Double)
 
   def readForRefunder(filename: String): List[AccountForRefund] = {
     val rows = CSVReader[RefunderInput].readCSVFromFileName(filename, skipHeader = true)
     val accountsForRefund = rows.map { row =>
       AccountForRefund(
         accountId = row.accountId,
-        totalOverpaymentAmount = convertToDouble(row.overPaymentAmount)
+        totalOverpaymentAmount = row.overPaymentAmount
       )
     }
     logger.info(s"Read ${accountsForRefund.size} accounts...")
